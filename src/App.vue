@@ -3,145 +3,174 @@
 import HeaderHome from '@/views/Header.vue'
 import { computed, ref } from 'vue'
 
-/*
- * ==========================================
- * Dados do formulário
- * ==========================================
- */
+// Endereço do backend. Pode ser configurado por variável de ambiente.
+const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/'
 
+// Dados do formulário
 const modelo = ref('')
 const observacoes = ref('')
-
 const dadosTeste = ref(null)
 const atributoProtegido = ref(null)
 
 const metricasJustica = ref([])
 const metricasPerformance = ref([])
 
-/*
- * ==========================================
- * Métricas de performance preditiva
- * ==========================================
- */
+// Estado da requisição
+const carregando = ref(false)
+const erroApi = ref('')
+const relatorio = ref(null)
 
+// Métricas de performance
 const metricasPerformanceDisponiveis = [
   {
     id: 'accuracy',
     nome: 'Acurácia',
-    descricao:
-      'Mede a proporção de previsões corretas realizadas pelo modelo em relação ao total de previsões.',
+    descricao: 'Mede a proporção de previsões corretas em relação ao total de previsões.',
   },
   {
     id: 'micro-f1',
     nome: 'Micro F1',
-    descricao:
-      'Calcula a média F1 considerando globalmente todas as previsões, dando o mesmo peso para cada observação.',
+    descricao: 'Calcula o F1 considerando globalmente as previsões de todas as classes.',
   },
   {
     id: 'macro-f1',
     nome: 'Macro F1',
-    descricao:
-      'Calcula a média dos valores F1 de cada classe, dando o mesmo peso para todas as classes.',
+    descricao: 'Calcula o F1 de cada classe e dá o mesmo peso a todas as classes.',
   },
 ]
 
-/*
- * ==========================================
- * Métricas de justiça algorítmica
- * ==========================================
- */
-
+// Métricas de justiça algorítmica
 const metricasJusticaDisponiveis = [
   {
     id: 'dpd',
-    nome: 'SPD / DPD',
-    descricao:
-      'Verifica se a proporção de previsões positivas é semelhante entre os grupos definidos pelo atributo protegido.',
+    nome: 'DPD',
+    descricao: 'Mede a diferença entre as taxas de previsão positiva dos grupos.',
   },
   {
     id: 'eod',
     nome: 'EOD',
     descricao:
-      'Verifica se a taxa de verdadeiros positivos é semelhante entre os diferentes grupos.',
+      'Mede a maior diferença entre as taxas de verdadeiros positivos e falsos positivos dos grupos.',
   },
   {
     id: 'eopd',
     nome: 'EOpD',
-    descricao:
-      'Verifica se pessoas de diferentes grupos possuem oportunidades semelhantes de receber uma previsão positiva quando o resultado real é positivo.',
+    descricao: 'Mede a diferença entre as taxas de verdadeiros positivos dos grupos.',
   },
 ]
 
-/*
- * ==========================================
- * Validação do formulário
- * ==========================================
- *
- * As métricas de performance são opcionais.
- *
- * São obrigatórios:
- * - Modelo
- * - Dados de teste
- * - Atributo protegido
- * - Pelo menos uma métrica de justiça
- */
-
+// Validação dos campos obrigatórios
 const formularioValido = computed(() => {
-  const modeloValido = modelo.value.trim() !== ''
-
-  const dadosTesteValidos = dadosTeste.value !== null
-
-  const atributoProtegidoValido = atributoProtegido.value !== null
-
-  const metricaJusticaValida = metricasJustica.value.length > 0
-
-  return modeloValido && dadosTesteValidos && atributoProtegidoValido && metricaJusticaValida
+  return (
+    modelo.value.trim() !== '' &&
+    dadosTeste.value !== null &&
+    atributoProtegido.value !== null &&
+    metricasJustica.value.length > 0
+  )
 })
 
-/*
- * ==========================================
- * Upload dos arquivos
- * ==========================================
- */
-
+// Seleção dos arquivos
 function selecionarDadosTeste(event) {
-  dadosTeste.value = event.target.files[0] || null
+  dadosTeste.value = event.target.files?.[0] || null
+  erroApi.value = ''
+  relatorio.value = null
 }
 
 function selecionarAtributoProtegido(event) {
-  atributoProtegido.value = event.target.files[0] || null
+  atributoProtegido.value = event.target.files?.[0] || null
+  erroApi.value = ''
+  relatorio.value = null
 }
 
-/*
- * ==========================================
- * Gerar relatório
- * ==========================================
- */
+// Limpa resultados antigos quando o usuário altera o formulário
+function limparRelatorio() {
+  relatorio.value = null
+  erroApi.value = ''
+}
 
-function gerarRelatorio() {
-  if (!formularioValido.value) {
+// Envia os dados para o backend
+async function gerarRelatorio() {
+  if (!formularioValido.value || carregando.value) {
     return
   }
 
-  console.log('Modelo:', modelo.value)
+  carregando.value = true
+  erroApi.value = ''
+  relatorio.value = null
 
-  console.log('Dados de teste:', dadosTeste.value)
+  try {
+    const formulario = new FormData()
 
-  console.log('Atributo protegido:', atributoProtegido.value)
+    formulario.append('modelo', modelo.value.trim())
+    formulario.append('observacoes', observacoes.value)
+    formulario.append('dados_teste', dadosTeste.value)
+    formulario.append('atributo_protegido', atributoProtegido.value)
 
-  console.log('Métricas de performance:', metricasPerformance.value)
+    formulario.append('metricas_performance', metricasPerformance.value.join(','))
 
-  console.log('Métricas de justiça:', metricasJustica.value)
+    formulario.append('metricas_justica', metricasJustica.value.join(','))
 
-  console.log('Observações:', observacoes.value)
+    const resposta = await fetch(`${API_URL}avaliar`, {
+      method: 'POST',
+      body: formulario,
+    })
+    console.log(resposta)
 
-  /*
-   * Aqui poderá ser realizada a chamada
-   * para a API responsável pela análise.
-   */
+    // A API pode retornar JSON tanto em caso de sucesso quanto de erro.
+    const dados = await resposta.json()
+    console.log('Resposta recebida do backend:', dados)
+
+    if (!resposta.ok) {
+      throw new Error(
+        typeof dados.detail === 'string' ? dados.detail : 'Não foi possível gerar o relatório.',
+      )
+    }
+
+    relatorio.value = dados
+    console.log('Relatório armazenado:', relatorio.value)
+  } catch (erro) {
+    console.error('Erro ao gerar relatório:', erro)
+
+    if (erro instanceof TypeError) {
+      erroApi.value =
+        'Não foi possível conectar ao backend. Verifique se o FastAPI está em execução e tente novamente.'
+    } else {
+      erroApi.value = erro.message || 'Ocorreu um erro ao processar a avaliação.'
+    }
+  } finally {
+    carregando.value = false
+  }
+}
+
+// Formatação para apresentar os resultados
+function formatarValor(valor) {
+  if (valor === null || valor === undefined) {
+    return 'Não disponível'
+  }
+
+  if (typeof valor === 'number') {
+    return Number.isFinite(valor) ? valor.toFixed(4) : 'Não disponível'
+  }
+
+  return String(valor)
+}
+
+function nomeMetrica(chave) {
+  const nomes = {
+    accuracy: 'Acurácia',
+    'micro-f1': 'Micro F1',
+    micro_f1: 'Micro F1',
+    'macro-f1': 'Macro F1',
+    macro_f1: 'Macro F1',
+    dpd: 'DPD',
+    spd: 'SPD',
+    eod: 'EOD',
+    eopd: 'EOpD',
+  }
+
+  return nomes[chave] || chave
 }
 </script>
-
 <template>
   <div class="page">
     <!-- ======================================
@@ -181,7 +210,13 @@ function gerarRelatorio() {
           Modelo
           <span class="required">*</span>
         </label>
+        <span class="metric-help" tabindex="0">
+          ?
 
+          <span class="metric-tooltip">
+            {{ 'Informação textual para identificar o modelo que está sendo testado.' }}
+          </span>
+        </span>
         <div class="input-tooltip">
           <input
             v-model="modelo"
@@ -191,10 +226,6 @@ function gerarRelatorio() {
             class="form-control"
             placeholder="Digite o nome do modelo"
           />
-
-          <div class="tooltip">
-            Informação textual para identificar o modelo que está sendo testado.
-          </div>
         </div>
       </div>
 
@@ -207,7 +238,15 @@ function gerarRelatorio() {
           Dados de teste
           <span class="required">*</span>
         </label>
+        <span class="metric-help" tabindex="0">
+          ?
 
+          <span class="metric-tooltip">
+            {{
+              'CSV com duas colunas: uma contendo o rótulo real e outra contendo o rótulo predito pelo modelo.'
+            }}
+          </span>
+        </span>
         <div class="input-tooltip">
           <input
             id="csvFile"
@@ -217,11 +256,6 @@ function gerarRelatorio() {
             class="form-control"
             @change="selecionarDadosTeste"
           />
-
-          <div class="tooltip">
-            CSV com duas colunas: uma contendo o rótulo real e outra contendo o rótulo predito pelo
-            modelo.
-          </div>
         </div>
       </div>
 
@@ -234,7 +268,15 @@ function gerarRelatorio() {
           Atributo protegido
           <span class="required">*</span>
         </label>
+        <span class="metric-help" tabindex="0">
+          ?
 
+          <span class="metric-tooltip">
+            {{
+              'CSV contendo uma única coluna com o atributo protegido utilizado para comparar os diferentes grupos durante a avaliação.'
+            }}
+          </span>
+        </span>
         <div class="input-tooltip">
           <input
             id="atributoProtegido"
@@ -244,11 +286,6 @@ function gerarRelatorio() {
             class="form-control"
             @change="selecionarAtributoProtegido"
           />
-
-          <div class="tooltip">
-            CSV contendo uma única coluna com o atributo protegido utilizado para comparar os
-            diferentes grupos durante a avaliação.
-          </div>
         </div>
       </div>
 
@@ -369,13 +406,62 @@ function gerarRelatorio() {
       <div class="actions">
         <button
           type="button"
-          :disabled="!formularioValido"
-          :class="{ ready: formularioValido }"
+          :disabled="!formularioValido || carregando"
+          :class="{ ready: formularioValido && !carregando }"
           @click="gerarRelatorio"
         >
-          Gerar relatório
+          {{ carregando ? 'Gerando relatório...' : 'Gerar relatório' }}
         </button>
       </div>
+      <section v-if="relatorio" class="report-result">
+        <h2>Relatório de avaliação</h2>
+
+        <p>
+          <strong>Modelo avaliado: </strong>
+          {{ relatorio.modelo }}
+        </p>
+
+        <p>
+          <strong>Quantidade de registros: </strong>
+          {{ relatorio.resultado?.quantidade_registros ?? 'Não informado' }}
+        </p>
+
+        <div v-if="relatorio.resultado?.performance">
+          <h3>Performance preditiva</h3>
+
+          <div
+            v-for="(valor, chave) in relatorio.resultado.performance"
+            :key="chave"
+            class="result-card"
+          >
+            <span>{{ chave }}: </span>
+            <strong>{{ valor }}</strong>
+          </div>
+        </div>
+
+        <div v-if="relatorio.resultado?.fairness">
+          <h3>Métricas de justiça algorítmica</h3>
+
+          <div
+            v-for="(valor, chave) in relatorio.resultado.fairness"
+            :key="chave"
+            class="result-card"
+          >
+            <span>{{ chave }}: </span>
+            <strong>{{ valor }}</strong>
+          </div>
+        </div>
+
+        <p v-if="relatorio.observacoes">
+          <strong>Observações: </strong>
+          {{ relatorio.observacoes }}
+        </p>
+
+        <details>
+          <summary>Ver resposta completa da avaliação</summary>
+          <pre>{{ JSON.stringify(relatorio, null, 2) }}</pre>
+        </details>
+      </section>
     </main>
   </div>
 </template>
@@ -501,61 +587,6 @@ function gerarRelatorio() {
 
 .input-tooltip input[type='file'] {
   cursor: pointer;
-}
-
-/* ==========================================
-   Tooltip dos campos
-========================================== */
-
-.tooltip {
-  position: absolute;
-
-  left: 0;
-  bottom: calc(100% + 8px);
-
-  width: 320px;
-  max-width: 90vw;
-
-  padding: 10px 12px;
-
-  background: #333;
-  color: #fff;
-
-  font-size: 13px;
-  line-height: 1.4;
-
-  border-radius: 6px;
-
-  z-index: 1000;
-
-  visibility: hidden;
-  opacity: 0;
-
-  pointer-events: none;
-
-  transition:
-    opacity 0.2s ease,
-    visibility 0.2s ease;
-}
-
-.tooltip::after {
-  content: '';
-
-  position: absolute;
-
-  left: 20px;
-  top: 100%;
-
-  border-width: 6px;
-  border-style: solid;
-
-  border-color: #333 transparent transparent transparent;
-}
-
-.input-tooltip:hover .tooltip,
-.input-tooltip:focus-within .tooltip {
-  visibility: visible;
-  opacity: 1;
 }
 
 /* ==========================================
@@ -871,5 +902,41 @@ function gerarRelatorio() {
   .tooltip {
     width: 250px;
   }
+}
+
+.report-result {
+  margin-top: 24px;
+  padding: 24px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  background: #fff;
+}
+
+.report-result h2 {
+  margin-bottom: 20px;
+}
+
+.report-result h3 {
+  margin-top: 24px;
+}
+
+.result-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 10px 0;
+  padding: 14px;
+  border-radius: 8px;
+  background: #f3f6fa;
+}
+
+.result-card strong {
+  overflow-wrap: anywhere;
+}
+
+.report-result pre {
+  overflow-x: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 </style>
