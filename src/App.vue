@@ -1,7 +1,7 @@
-```vue
 <script setup>
 import HeaderHome from '@/views/Header.vue'
 import { computed, ref } from 'vue'
+import RelatorioModal from '@/components/RelatorioModal.vue'
 
 // Endereço do backend. Pode ser configurado por variável de ambiente.
 const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/'
@@ -19,6 +19,8 @@ const metricasPerformance = ref([])
 const carregando = ref(false)
 const erroApi = ref('')
 const relatorio = ref(null)
+
+const mostrarRelatorio = ref(false)
 
 // Métricas de performance
 const metricasPerformanceDisponiveis = [
@@ -96,7 +98,7 @@ async function gerarRelatorio() {
 
   carregando.value = true
   erroApi.value = ''
-  relatorio.value = null
+  mostrarRelatorio.value = false
 
   try {
     const formulario = new FormData()
@@ -114,29 +116,35 @@ async function gerarRelatorio() {
       method: 'POST',
       body: formulario,
     })
-    console.log(resposta)
 
-    // A API pode retornar JSON tanto em caso de sucesso quanto de erro.
-    const dados = await resposta.json()
-    console.log('Resposta recebida do backend:', dados)
+    const texto = await resposta.text()
+    let dados
+
+    try {
+      dados = JSON.parse(texto)
+    } catch {
+      throw new Error(`Resposta inválida do servidor (HTTP ${resposta.status}).`)
+    }
 
     if (!resposta.ok) {
       throw new Error(
-        typeof dados.detail === 'string' ? dados.detail : 'Não foi possível gerar o relatório.',
+        typeof dados.detail === 'string' ? dados.detail : `Erro HTTP ${resposta.status}.`,
       )
     }
 
+    if (!dados.resultado) {
+      throw new Error('O servidor respondeu, mas não retornou os resultados da avaliação.')
+    }
+
     relatorio.value = dados
-    console.log('Relatório armazenado:', relatorio.value)
+    mostrarRelatorio.value = true
   } catch (erro) {
     console.error('Erro ao gerar relatório:', erro)
 
-    if (erro instanceof TypeError) {
-      erroApi.value =
-        'Não foi possível conectar ao backend. Verifique se o FastAPI está em execução e tente novamente.'
-    } else {
-      erroApi.value = erro.message || 'Ocorreu um erro ao processar a avaliação.'
-    }
+    erroApi.value =
+      erro instanceof TypeError
+        ? 'Não foi possível conectar ao backend. Verifique se o FastAPI está em execução.'
+        : erro.message || 'Não foi possível gerar o relatório.'
   } finally {
     carregando.value = false
   }
@@ -173,18 +181,20 @@ function nomeMetrica(chave) {
 </script>
 <template>
   <div class="page">
-    <!-- ======================================
-         Cabeçalho
-    ======================================= -->
+    <!-- Cabeçalho
+ -->
 
     <header class="page-header">
       <HeaderHome />
     </header>
+    <RelatorioModal
+      v-if="mostrarRelatorio && relatorio"
+      :relatorio="relatorio"
+      @fechar="mostrarRelatorio = false"
+    />
 
     <main class="container">
-      <!-- ======================================
-           Introdução
-      ======================================= -->
+      <!-- Introdução -->
 
       <section class="intro">
         <h1>Justiça Algorítmica</h1>
@@ -201,9 +211,7 @@ function nomeMetrica(chave) {
         </p>
       </section>
 
-      <!-- ======================================
-           Modelo
-      ======================================= -->
+      <!-- Modelo -->
 
       <div class="form-group">
         <label for="modelo">
@@ -229,9 +237,7 @@ function nomeMetrica(chave) {
         </div>
       </div>
 
-      <!-- ======================================
-           Dados de teste
-      ======================================= -->
+      <!-- Dados de teste -->
 
       <div class="form-group">
         <label for="csvFile">
@@ -259,9 +265,7 @@ function nomeMetrica(chave) {
         </div>
       </div>
 
-      <!-- ======================================
-           Atributo protegido
-      ======================================= -->
+      <!-- Atributo protegido -->
 
       <div class="form-group">
         <label for="atributoProtegido">
@@ -289,9 +293,7 @@ function nomeMetrica(chave) {
         </div>
       </div>
 
-      <!-- ======================================
-           MÉTRICAS DE PERFORMANCE PREDITIVA
-      ======================================= -->
+      <!-- MÉTRICAS DE PERFORMANCE PREDITIVA -->
 
       <div class="form-group metricas-group">
         <label class="metricas-label"> Performance preditiva </label>
@@ -328,9 +330,7 @@ function nomeMetrica(chave) {
         </div>
       </div>
 
-      <!-- ======================================
-           MÉTRICAS DE JUSTIÇA ALGORÍTMICA
-      ======================================= -->
+      <!-- MÉTRICAS DE JUSTIÇA ALGORÍTMICA -->
 
       <div class="form-group metricas-group">
         <label class="metricas-label">
@@ -370,9 +370,7 @@ function nomeMetrica(chave) {
         </div>
       </div>
 
-      <!-- ======================================
-           Observações
-      ======================================= -->
+      <!-- Observações -->
 
       <div class="form-group observacoes">
         <label for="observacoes"> Observações </label>
@@ -386,9 +384,7 @@ function nomeMetrica(chave) {
         ></textarea>
       </div>
 
-      <!-- ======================================
-           Mensagem de validação
-      ======================================= -->
+      <!--Mensagem de validação -->
 
       <div v-if="!formularioValido" class="form-message">
         Preencha todos os campos obrigatórios e selecione pelo menos uma métrica de justiça
@@ -399,9 +395,7 @@ function nomeMetrica(chave) {
         Todos os campos obrigatórios foram preenchidos. O relatório está pronto para ser gerado.
       </div>
 
-      <!-- ======================================
-           Botão
-      ======================================= -->
+      <!-- Botão -->
 
       <div class="actions">
         <button
@@ -413,64 +407,15 @@ function nomeMetrica(chave) {
           {{ carregando ? 'Gerando relatório...' : 'Gerar relatório' }}
         </button>
       </div>
-      <section v-if="relatorio" class="report-result">
-        <h2>Relatório de avaliação</h2>
 
-        <p>
-          <strong>Modelo avaliado: </strong>
-          {{ relatorio.modelo }}
-        </p>
-
-        <p>
-          <strong>Quantidade de registros: </strong>
-          {{ relatorio.resultado?.quantidade_registros ?? 'Não informado' }}
-        </p>
-
-        <div v-if="relatorio.resultado?.performance">
-          <h3>Performance preditiva</h3>
-
-          <div
-            v-for="(valor, chave) in relatorio.resultado.performance"
-            :key="chave"
-            class="result-card"
-          >
-            <span>{{ chave }}: </span>
-            <strong>{{ valor }}</strong>
-          </div>
-        </div>
-
-        <div v-if="relatorio.resultado?.fairness">
-          <h3>Métricas de justiça algorítmica</h3>
-
-          <div
-            v-for="(valor, chave) in relatorio.resultado.fairness"
-            :key="chave"
-            class="result-card"
-          >
-            <span>{{ chave }}: </span>
-            <strong>{{ valor }}</strong>
-          </div>
-        </div>
-
-        <p v-if="relatorio.observacoes">
-          <strong>Observações: </strong>
-          {{ relatorio.observacoes }}
-        </p>
-
-        <details>
-          <summary>Ver resposta completa da avaliação</summary>
-          <pre>{{ JSON.stringify(relatorio, null, 2) }}</pre>
-        </details>
-      </section>
+      <p v-if="erroApi" class="error-message" role="alert">
+        {{ erroApi }}
+      </p>
     </main>
   </div>
 </template>
 
 <style scoped>
-/* ==========================================
-   Estrutura da página
-========================================== */
-
 .page {
   width: 100%;
   min-height: 100vh;
@@ -903,40 +848,15 @@ function nomeMetrica(chave) {
     width: 250px;
   }
 }
-
-.report-result {
-  margin-top: 24px;
-  padding: 24px;
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  background: #fff;
-}
-
-.report-result h2 {
-  margin-bottom: 20px;
-}
-
-.report-result h3 {
-  margin-top: 24px;
-}
-
-.result-card {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-  margin: 10px 0;
-  padding: 14px;
+.error-message {
+  max-width: 650px;
+  margin: 16px auto;
+  padding: 12px 16px;
+  border: 1px solid #ef9a9a;
   border-radius: 8px;
-  background: #f3f6fa;
-}
-
-.result-card strong {
-  overflow-wrap: anywhere;
-}
-
-.report-result pre {
-  overflow-x: auto;
-  white-space: pre-wrap;
+  background: #ffebee;
+  color: #b71c1c;
+  line-height: 1.5;
   overflow-wrap: anywhere;
 }
 </style>
