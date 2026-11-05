@@ -112,10 +112,20 @@ async function gerarRelatorio() {
 
     formulario.append('metricas_justica', metricasJustica.value.join(','))
 
-    const resposta = await fetch(`${API_URL}avaliar`, {
-      method: 'POST',
-      body: formulario,
-    })
+    const API_URL = import.meta.env.VITE_API_URL
+
+    async function gerarRelatorio(formData) {
+      const resposta = await fetch(`${API_URL}/avaliar`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!resposta.ok) {
+        throw new Error(`Erro HTTP: ${resposta.status}`)
+      }
+
+      return await resposta.json()
+    }
 
     const texto = await resposta.text()
     let dados

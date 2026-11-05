@@ -1,4 +1,9 @@
 <script setup>
+// onMounted:
+// Executa uma função quando o componente é inserido na tela.
+//
+// onUnmounted:
+// Executa uma função quando o componente é removido da tela.
 import { onMounted, onUnmounted } from 'vue'
 import RelatorioView from '@/views/RelatorioView.vue'
 
