@@ -4,7 +4,7 @@ import { computed, ref } from 'vue'
 import RelatorioModal from '@/components/RelatorioModal.vue'
 
 // Endereço do backend. Pode ser configurado por variável de ambiente.
-const API_URL = import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/'
+const API_URL = import.meta.env.VITE_API_URL
 
 // Dados do formulário
 const modelo = ref('')
@@ -114,46 +114,38 @@ async function gerarRelatorio() {
 
     const API_URL = import.meta.env.VITE_API_URL
 
-    async function gerarRelatorio(formData) {
-      const resposta = await fetch(`${API_URL}/avaliar`, {
-        method: 'POST',
-        body: formData,
-      })
+    // Envia os dados para o FastAPI hospedado no Render
+    const resposta = await fetch(`${API_URL}/avaliar`, {
+      method: 'POST',
+      body: formulario,
+    })
 
-      if (!resposta.ok) {
-        throw new Error(`Erro HTTP: ${resposta.status}`)
-      }
-
-      return await resposta.json()
-    }
-
-    const texto = await resposta.text()
-    let dados
-
-    try {
-      dados = JSON.parse(texto)
-    } catch {
-      throw new Error(`Resposta inválida do servidor (HTTP ${resposta.status}).`)
-    }
-
+    // Verifica se houve erro HTTP
     if (!resposta.ok) {
-      throw new Error(
-        typeof dados.detail === 'string' ? dados.detail : `Erro HTTP ${resposta.status}.`,
-      )
+      const textoErro = await resposta.text()
+
+      throw new Error(`Erro HTTP ${resposta.status}: ${textoErro}`)
     }
 
+    // Converte a resposta para JSON
+    const dados = await resposta.json()
+
+    // Verifica se o backend retornou os resultados
     if (!dados.resultado) {
       throw new Error('O servidor respondeu, mas não retornou os resultados da avaliação.')
     }
 
+    // Armazena os resultados do relatório
     relatorio.value = dados
     mostrarRelatorio.value = true
+
+    console.log('Relatório recebido:', dados)
   } catch (erro) {
     console.error('Erro ao gerar relatório:', erro)
 
     erroApi.value =
       erro instanceof TypeError
-        ? 'Não foi possível conectar ao backend. Verifique se o FastAPI está em execução.'
+        ? 'Não foi possível conectar ao backend. Verifique a conexão com a API.'
         : erro.message || 'Não foi possível gerar o relatório.'
   } finally {
     carregando.value = false
